@@ -1,0 +1,142 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('https://fonts.gstatic.com/s/inter/v18/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2ZL7W0Q5nw.woff2') format('woff2');
+}
+
+@theme inline {
+  /* FlowSDR Brand Colors */
+  --color-background: #0A0F1C;
+  --color-foreground: #FFFFFF;
+  --color-card: #0F1629;
+  --color-card-foreground: #FFFFFF;
+  --color-popover: #0F1629;
+  --color-popover-foreground: #FFFFFF;
+  --color-primary: #0066FF;
+  --color-primary-foreground: #FFFFFF;
+  --color-secondary: #1A2340;
+  --color-secondary-foreground: #E6F4FF;
+  --color-muted: #1A2340;
+  --color-muted-foreground: #8B9DC3;
+  --color-accent: #00D4FF;
+  --color-accent-foreground: #0A0F1C;
+  --color-destructive: #FF4444;
+  --color-destructive-foreground: #FFFFFF;
+  --color-border: #1E2A4A;
+  --color-input: #1E2A4A;
+  --color-ring: #0066FF;
+  --color-chart-1: #0066FF;
+  --color-chart-2: #00D4FF;
+  --color-chart-3: #007BFF;
+  --color-chart-4: #0033CC;
+  --color-chart-5: #E6F4FF;
+  
+  /* Sidebar */
+  --color-sidebar: #0A0F1C;
+  --color-sidebar-foreground: #E6F4FF;
+  --color-sidebar-primary: #0066FF;
+  --color-sidebar-primary-foreground: #FFFFFF;
+  --color-sidebar-accent: #00D4FF;
+  --color-sidebar-accent-foreground: #0A0F1C;
+  --color-sidebar-border: #1E2A4A;
+  --color-sidebar-ring: #0066FF;
+  
+  /* Neutral Colors */
+  --color-neutral-light: #E6F4FF;
+  --color-neutral-gray: #F2F4F7;
+  
+  /* Gradients - use with Tailwind bg-gradient-* */
+  --gradient-primary: linear-gradient(135deg, #00D4FF 0%, #0066FF 100%);
+  --gradient-secondary: linear-gradient(135deg, #007BFF 0%, #0033CC 100%);
+  
+  --radius: 0.625rem;
+  
+  /* Typography */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Custom gradient utilities */
+.gradient-primary {
+  background: linear-gradient(135deg, #00D4FF 0%, #0066FF 100%);
+}
+
+.gradient-secondary {
+  background: linear-gradient(135deg, #007BFF 0%, #0033CC 100%);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #00D4FF 0%, #0066FF 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glassmorphism */
+.glass {
+  background: rgba(15, 22, 41, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(30, 42, 74, 0.5);
+}
+
+.glass-card {
+  background: rgba(15, 22, 41, 0.5);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(30, 42, 74, 0.4);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0A0F1C;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1E2A4A;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2A3A5A;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  html {
+    @apply bg-background;
+  }
+  
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  
+  /* Typography Scale */
+  h1 {
+    @apply text-[40px] leading-[48px] font-semibold;
+  }
+  
+  h2 {
+    @apply text-[28px] leading-[36px] font-semibold;
+  }
+  
+  h3 {
+    @apply text-[20px] leading-[28px] font-medium;
+  }
+  
+  p, body {
+    @apply text-[16px] leading-[24px] font-normal;
+  }
+}
