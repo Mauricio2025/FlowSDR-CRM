@@ -1,28 +1,28 @@
 <div align="center">
-  <img src="public/image-logo.png" alt="FlowSDR Logo" width="200">
-  <h1>🚀 FlowSDR — CRM Inteligente para SDRs</h1>
+  <img src="public/image-logo.png" alt="FlowSDR Logo" width="180">
+  <h1>🚀 FlowSDR — CRM Inteligente</h1>
   <p><i>Escalando a personalização de vendas com Inteligência Artificial.</i></p>
 </div>
 
 ---
 
-## 📺 Apresentação em Vídeo
-Assista à demonstração completa das funcionalidades e da arquitetura técnica:
-[**CLIQUE AQUI PARA VER O VÍDEO NO YOUTUBE**](LINK_DO_TEU_VIDEO_AQUI)
+## 📺 Demonstração em Vídeo
+Confira o walkthrough completo das funcionalidades e da arquitetura técnica:
+👉 [**ASSISTIR APRESENTAÇÃO NO DRIVE**](LINK_DO_SEU_VIDEO_AQUI)
 
 ---
 
-## 💡 A Ideia
-O **FlowSDR** foi construído para resolver a dor real de quem está na linha de frente da prospecção. O objetivo é permitir que o SDR foque na estratégia, enquanto a IA cuida da redação personalizada, utilizando contextos reais de campanhas.
+## 💡 A Proposta
+O **FlowSDR** nasceu para resolver um problema comum: SDRs que perdem horas tentando personalizar mensagens. Aqui, a estratégia é centralizada. Você mapeia o lead, escolhe a campanha e a IA (Gemini 2.5 Flash) gera uma abordagem única baseada no contexto real de vendas.
 
-## 🔗 Links do Projeto
-* **Deploy Oficial:** [Link da Vercel](LINK_DO_TEU_DEPLOY_AQUI)
-* **Stack:** React, Tailwind CSS, Supabase, Gemini 2.5 Flash.
+## 🔗 Links Rápidos
+* **Aplicação no Ar:** [Link da Vercel](https://flow-sdr-crm-o734.vercel.app/)
+* **Stack Principal:** React, Tailwind CSS, Supabase (DB & Auth), Gemini 2.5 Flash (IA).
 
-## 🛠️ Destaques Técnicos
-* **Multi-Tenancy:** Isolamento total de dados por Workspace via Supabase RLS.
-* **Kanban Inteligente:** Fluxo de leads com validações de dados para garantir prompts de alta qualidade.
-* **IA Edge Functions:** Processamento de mensagens em tempo real com baixa latência.
+## 🧠 Decisões de Engenharia
+* **Segurança e Isolamento:** Implementação de Row Level Security (RLS) no Supabase para garantir que os dados de cada Workspace sejam privados.
+* **UX de Alta Performance:** Kanban funcional com drag-and-drop e validações de dados em tempo real.
+* **Arquitetura Serverless:** Geração de mensagens via Edge Functions para garantir baixa latência.
 
 ---
-Desenvolvido por **Mauricio** — Engenheiro de Software.
+Desenvolvido com ☕ e código por **Mauricio**.
