@@ -15,7 +15,6 @@ export function Dashboard() {
     activeCampaigns: 0
   })
   
-  // NOVO: Metas dinâmicas puxadas do Workspace
   const [goals, setGoals] = useState({
     qualified: 50,
     total: 200
@@ -28,53 +27,56 @@ export function Dashboard() {
       try {
         setLoading(true)
 
-        // 1. Pega o ID do usuário logado e as metas do Workspace dele
+        // 1. Obtém o usuário e o Workspace vinculado
         const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          const { data: workspace } = await supabase
-            .from('workspaces')
-            .select('goal_qualified_leads, goal_total_leads')
-            .eq('owner_id', user.id)
-            .single()
+        
+        if (!user) return
 
-          if (workspace) {
-            setGoals({
-              qualified: workspace.goal_qualified_leads || 50,
-              total: workspace.goal_total_leads || 200
-            })
-          }
-        }
+        const { data: workspace } = await supabase
+          .from('workspaces')
+          .select('id, goal_qualified_leads, goal_total_leads')
+          .eq('owner_id', user.id)
+          .single()
 
-        // 2. Busca os leads ordenados
-        const { data: leads, error: leadsError } = await supabase
-          .from('leads')
-          .select('*')
-          .order('created_at', { ascending: false })
-
-        if (leadsError) throw leadsError
-
-        // 3. Busca campanhas ativas
-        const { count: activeCampsCount, error: campsError } = await supabase
-          .from('campaigns')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'active')
-
-        if (campsError) throw campsError
-
-        if (leads) {
-          const total = leads.length
-          const qualified = leads.filter(lead => lead.status === 'qualified').length
-
-          setMetrics({
-            totalLeads: total,
-            qualifiedLeads: qualified,
-            activeCampaigns: activeCampsCount || 0
+        if (workspace) {
+          setGoals({
+            qualified: workspace.goal_qualified_leads || 50,
+            total: workspace.goal_total_leads || 200
           })
 
-          setRecentLeads(leads.slice(0, 5))
+          // 2. Busca leads filtrando pelo ID do Workspace ativo (Evita vazamento de dados)
+          const { data: leads, error: leadsError } = await supabase
+            .from('leads')
+            .select('*')
+            .eq('workspace_id', workspace.id) // FILTRO CRÍTICO
+            .order('created_at', { ascending: false })
+
+          if (leadsError) throw leadsError
+
+          // 3. Busca campanhas ativas filtrando pelo Workspace
+          const { count: activeCampsCount, error: campsError } = await supabase
+            .from('campaigns')
+            .select('*', { count: 'exact', head: true })
+            .eq('workspace_id', workspace.id) // FILTRO CRÍTICO
+            .eq('status', 'active')
+
+          if (campsError) throw campsError
+
+          if (leads) {
+            const total = leads.length
+            const qualified = leads.filter(lead => lead.status === 'qualified').length
+
+            setMetrics({
+              totalLeads: total,
+              qualifiedLeads: qualified,
+              activeCampaigns: activeCampsCount || 0
+            })
+
+            setRecentLeads(leads.slice(0, 5))
+          }
         }
       } catch (error) {
-        console.error('Erro ao buscar métricas:', error)
+        console.error('Erro ao carregar dashboard:', error)
       } finally {
         setLoading(false)
       }
@@ -130,12 +132,12 @@ export function Dashboard() {
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
               <Card className="glass-card h-[350px] flex flex-col">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><Clock className="h-5 w-5 text-primary" /> Atividade Recente (Novos Leads)</CardTitle>
+                  <CardTitle className="flex items-center gap-2"><Clock className="h-5 w-5 text-primary" /> Atividade Recente</CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1 overflow-y-auto pr-2">
                   {recentLeads.length === 0 ? (
                     <div className="flex h-full items-center justify-center text-muted-foreground text-sm border border-dashed border-border/50 rounded-lg bg-secondary/10">
-                      Nenhuma atividade recente encontrada.
+                      Nenhuma atividade recente nesta empresa.
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -147,7 +149,7 @@ export function Dashboard() {
                             </div>
                             <div>
                               <p className="text-sm font-medium text-foreground">{lead.name}</p>
-                              <p className="text-xs text-muted-foreground">{lead.company}</p>
+                              <p className="text-xs text-muted-foreground">{lead.company || 'Empresa não informada'}</p>
                             </div>
                           </div>
                           <div className="text-xs text-muted-foreground text-right">{formatDate(lead.created_at)}</div>
@@ -162,7 +164,7 @@ export function Dashboard() {
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
               <Card className="glass-card h-[350px]">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-accent" /> Metas do Mês</CardTitle>
+                  <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-accent" /> Metas do Workspace</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-8 mt-4">
@@ -179,14 +181,11 @@ export function Dashboard() {
                           className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600"
                         />
                       </div>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Faltam {Math.max(goals.qualified - metrics.qualifiedLeads, 0)} leads para bater a meta.
-                      </p>
                     </div>
 
                     <div>
                       <div className="mb-2 flex justify-between text-sm">
-                        <span className="font-medium text-foreground">Volume de Prospecção</span>
+                        <span className="font-medium text-foreground">Volume Total</span>
                         <span className="text-[#00D4FF] font-bold">{metrics.totalLeads} / {goals.total}</span>
                       </div>
                       <div className="h-3 rounded-full bg-secondary/50 border border-border/50 overflow-hidden">
@@ -197,9 +196,6 @@ export function Dashboard() {
                           className="h-full bg-gradient-to-r from-[#00D4FF] to-[#0066FF]"
                         />
                       </div>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Cadastre mais leads para manter o topo de funil saudável.
-                      </p>
                     </div>
                   </div>
                 </CardContent>

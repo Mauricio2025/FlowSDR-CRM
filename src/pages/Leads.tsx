@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Filter, Loader2, AlertCircle, X, Search } from 'lucide-react'
+import { Plus, Filter, Loader2, X, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -10,18 +10,22 @@ import { supabase } from '@/lib/supabase'
 import type { Lead, Campaign } from '@/lib/supabase'
 
 export function Leads() {
+  // --- Estados de Identificação ---
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null)
+  
+  // --- Estados de Dados ---
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('')
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
+  
+  // --- Estados de UI ---
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [isSheetOpen, setIsSheetOpen] = useState(false)
-
-  // Estados para o Filtro de Busca
   const [searchTerm, setSearchTerm] = useState('')
   const [showFilter, setShowFilter] = useState(false)
 
-  // Estados para o Modal de Novo Lead
+  // --- Estados do Modal de Cadastro ---
   const [isCreateLeadOpen, setIsCreateLeadOpen] = useState(false)
   const [isSubmittingLead, setIsSubmittingLead] = useState(false)
   const [newLead, setNewLead] = useState({
@@ -34,26 +38,51 @@ export function Leads() {
     campaign_id: ''
   })
 
-  // 1. Busca Campanhas ao carregar a página
+  // 1. Inicialização: Identifica o Workspace do usuário logado
   useEffect(() => {
-    fetchCampaigns()
+    async function initLeadsPage() {
+      try {
+        setLoading(true)
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
+
+        const { data: workspace, error: wsError } = await supabase
+          .from('workspaces')
+          .select('id')
+          .eq('owner_id', user.id)
+          .single()
+
+        if (wsError) throw wsError
+
+        if (workspace) {
+          setWorkspaceId(workspace.id)
+          await fetchCampaigns(workspace.id)
+        }
+      } catch (error) {
+        console.error('Erro ao inicializar página:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    initLeadsPage()
   }, [])
 
-  // 2. Sempre que a campanha selecionada mudar, carrega os leads dela
+  // 2. Monitoramento: Busca leads sempre que mudar a campanha ou workspace
   useEffect(() => {
-    if (selectedCampaignId) {
-      fetchLeads()
-      // O formulário de "Novo Lead" já abre com a campanha atual selecionada
+    if (selectedCampaignId && workspaceId) {
+      fetchLeads(workspaceId)
       setNewLead(prev => ({ ...prev, campaign_id: selectedCampaignId }))
-    } else {
-      setLeads([])
-      setLoading(false)
     }
-  }, [selectedCampaignId])
+  }, [selectedCampaignId, workspaceId])
 
-  const fetchCampaigns = async () => {
+  const fetchCampaigns = async (wsId: string) => {
     try {
-      const { data, error } = await supabase.from('campaigns').select('*').eq('status', 'active')
+      const { data, error } = await supabase
+        .from('campaigns')
+        .select('*')
+        .eq('workspace_id', wsId) // Blindagem por Workspace
+        .eq('status', 'active')
+      
       if (error) throw error
       if (data && data.length > 0) {
         setCampaigns(data as Campaign[])
@@ -64,18 +93,19 @@ export function Leads() {
     }
   }
 
-  const fetchLeads = async (showSpinner = true) => {
-    if (!selectedCampaignId) return
+  const fetchLeads = async (wsId: string, showSpinner = true) => {
+    if (!selectedCampaignId || !wsId) return
     try {
       if (showSpinner) setLoading(true)
       const { data, error } = await supabase
         .from('leads')
         .select('*')
+        .eq('workspace_id', wsId) // Blindagem por Workspace
         .eq('campaign_id', selectedCampaignId)
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      if (data) setLeads(data as Lead[])
+      setLeads((data as Lead[]) || [])
     } catch (error) {
       console.error('Erro ao buscar leads:', error)
     } finally {
@@ -83,37 +113,35 @@ export function Leads() {
     }
   }
 
-  const handleLeadClick = (lead: Lead) => {
-    setSelectedLead(lead)
-    setIsSheetOpen(true)
-  }
-
-  // VALIDAÇÃO: Impede transição se faltarem dados obrigatórios
-  const validateTransition = (lead: Lead, nextStatus: Lead['status']): { valid: boolean; missing: string[] } => {
-    const missing: string[] = []
-    if (nextStatus === 'mapped' || nextStatus === 'contacting') {
-      if (!lead.name) missing.push('Nome')
-      if (!lead.company) missing.push('Empresa')
-      if (!lead.role) missing.push('Cargo')
-      if (!lead.email) missing.push('E-mail')
-    }
-    if (nextStatus === 'qualified') {
-      if (!lead.phone && !lead.linkedin) missing.push('Telefone ou LinkedIn')
-    }
-    return { valid: missing.length === 0, missing }
-  }
-
-  const handleLeadMove = async (leadId: string, newStatus: Lead['status']) => {
-    const lead = leads.find(l => l.id === leadId)
-    if (!lead) return
-
-    const validation = validateTransition(lead, newStatus)
-    if (!validation.valid) {
-      alert(`Transição bloqueada! Preencha: ${validation.missing.join(', ')}`)
-      fetchLeads(false) 
+  const handleCreateLead = async () => {
+    if (!newLead.name || !newLead.company || !newLead.campaign_id || !workspaceId) {
+      alert("Preencha Nome, Empresa e selecione a Campanha.")
       return
     }
 
+    setIsSubmittingLead(true)
+    try {
+      const { error } = await supabase.from('leads').insert([{
+        ...newLead,
+        status: 'base',
+        workspace_id: workspaceId // Injeção automática de segurança
+      }])
+
+      if (error) throw error
+
+      setNewLead({ name: '', company: '', role: '', email: '', phone: '', linkedin: '', campaign_id: selectedCampaignId })
+      setIsCreateLeadOpen(false)
+      fetchLeads(workspaceId)
+
+    } catch (error: any) {
+      alert(`Erro ao salvar lead: ${error.message}`)
+    } finally {
+      setIsSubmittingLead(false)
+    }
+  }
+
+  const handleLeadMove = async (leadId: string, newStatus: Lead['status']) => {
+    // Atualização otimista na UI
     setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, status: newStatus } : l)))
 
     try {
@@ -121,84 +149,28 @@ export function Leads() {
       if (error) throw error
     } catch (error) {
       console.error('Erro ao mover lead:', error)
-      fetchLeads(false) 
-    }
-  }
-
-  const handleCreateLead = async () => {
-    if (!newLead.name || !newLead.company || !newLead.campaign_id) {
-      alert("Por favor, preencha o Nome, Empresa e selecione a Campanha.")
-      return
-    }
-
-    setIsSubmittingLead(true)
-    try {
-      const { data: userData } = await supabase.auth.getUser()
-      if (!userData.user) throw new Error('Usuário não logado')
-
-      const { data: workspaceData } = await supabase.from('workspaces').select('id').eq('owner_id', userData.user.id).single()
-      if (!workspaceData) throw new Error('Workspace não encontrado')
-
-      const { error } = await supabase.from('leads').insert([{
-        name: newLead.name,
-        company: newLead.company,
-        role: newLead.role,
-        email: newLead.email,
-        phone: newLead.phone,
-        linkedin: newLead.linkedin,
-        campaign_id: newLead.campaign_id,
-        status: 'base',
-        workspace_id: workspaceData.id
-      }])
-
-      if (error) throw error
-
-      setNewLead({ name: '', company: '', role: '', email: '', phone: '', linkedin: '', campaign_id: selectedCampaignId })
-      setIsCreateLeadOpen(false)
-      
-      if (newLead.campaign_id === selectedCampaignId) {
-        fetchLeads()
-      } else {
-        alert("Lead criado com sucesso em outra campanha!")
-      }
-
-    } catch (error: any) {
-      alert(`Erro ao criar lead: ${error.message}`)
-    } finally {
-      setIsSubmittingLead(false)
+      if (workspaceId) fetchLeads(workspaceId, false) 
     }
   }
 
   const handleInjectMockData = async () => {
-    if (!selectedCampaignId) {
-      alert("Selecione uma campanha primeiro!")
-      return
-    }
+    if (!selectedCampaignId || !workspaceId) return
     try {
-      const { data: userData } = await supabase.auth.getUser()
-      if (!userData.user) return
-      const { data: workspaceData } = await supabase.from('workspaces').select('id').eq('owner_id', userData.user.id).single()
-      if (!workspaceData) return
-
       const mockData = [
-        { name: 'João Silva', company: 'Tech Corp', role: 'CTO', email: 'joao@techcorp.com', status: 'base', workspace_id: workspaceData.id, campaign_id: selectedCampaignId },
-        { name: 'Maria Santos', company: 'Startup XYZ', role: 'CEO', email: 'maria@startupxyz.com', status: 'mapped', workspace_id: workspaceData.id, campaign_id: selectedCampaignId },
-        { name: 'Pedro Costa', company: 'Empresa ABC', role: 'Diretor', email: 'pedro@abc.com', status: 'contacting', workspace_id: workspaceData.id, campaign_id: selectedCampaignId }
+        { name: 'Joaquim Silva', company: 'Pires Tech', role: 'Gerente', email: 'joaquim@pires.com', status: 'base', workspace_id: workspaceId, campaign_id: selectedCampaignId },
+        { name: 'Aline Souza', company: 'Inovação SA', role: 'Diretora', email: 'aline@inovacao.com', status: 'mapped', workspace_id: workspaceId, campaign_id: selectedCampaignId }
       ]
-
       const { error } = await supabase.from('leads').insert(mockData)
       if (error) throw error
-      fetchLeads()
+      fetchLeads(workspaceId)
     } catch (error: any) {
-      alert(`Erro ao salvar os leads: ${error.message}`)
+      alert(`Erro: ${error.message}`)
     }
   }
 
-  // Filtro de Busca em tempo real
   const filteredLeads = leads.filter(lead => 
     lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    lead.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (lead.email && lead.email.toLowerCase().includes(searchTerm.toLowerCase()))
+    lead.company.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   return (
@@ -212,9 +184,9 @@ export function Leads() {
           
           {campaigns.length > 0 && (
             <div className="ml-6 border-l border-border/50 pl-6 hidden sm:block">
-              <label className="text-xs text-muted-foreground mb-1 block">Campanha Ativa</label>
+              <label className="text-xs text-muted-foreground mb-1 block uppercase font-bold tracking-tighter">Filtro de Campanha</label>
               <select
-                className="h-9 rounded-md border border-input bg-secondary/30 px-3 py-1 text-sm text-foreground focus:ring-2 focus:ring-[#00D4FF] focus:outline-none"
+                className="h-9 rounded-md border border-input bg-secondary/30 px-3 py-1 text-sm focus:ring-2 focus:ring-[#00D4FF] focus:outline-none"
                 value={selectedCampaignId}
                 onChange={(e) => setSelectedCampaignId(e.target.value)}
               >
@@ -227,29 +199,22 @@ export function Leads() {
         </div>
 
         <div className="flex items-center gap-3">
-          {campaigns.length === 0 ? (
-            <span className="text-sm text-amber-500 flex items-center gap-2"><AlertCircle className="h-4 w-4"/> Nenhuma campanha ativa no momento</span>
-          ) : (
+          {campaigns.length > 0 && (
             <>
-              {/* FILTRO EM TEMPO REAL */}
               {showFilter && (
                 <motion.div initial={{ width: 0, opacity: 0 }} animate={{ width: 'auto', opacity: 1 }} className="relative">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Buscar lead ou empresa..."
-                    className="h-9 w-64 pl-9 bg-secondary/30 border-border/50 focus:ring-[#00D4FF]"
+                    className="h-9 w-64 pl-9 bg-secondary/30 border-border/50"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    autoFocus
                   />
                 </motion.div>
               )}
               
-              {leads.length === 0 && !loading && !searchTerm && (
-                <Button variant="outline" size="sm" onClick={handleInjectMockData}>Gerar Dados</Button>
-              )}
-              <Button variant={showFilter ? "secondary" : "outline"} size="sm" onClick={() => { setShowFilter(!showFilter); setSearchTerm(''); }}>
-                <Filter className="mr-2 h-4 w-4" /> Filtros
+              <Button variant="outline" size="sm" onClick={() => setShowFilter(!showFilter)}>
+                <Filter className="mr-2 h-4 w-4" /> {showFilter ? 'Fechar' : 'Buscar'}
               </Button>
               <Button variant="gradient" size="sm" onClick={() => setIsCreateLeadOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" /> Novo Lead
@@ -259,16 +224,17 @@ export function Leads() {
         </div>
       </motion.div>
 
-      {!selectedCampaignId ? (
-         <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-border bg-secondary/10">
-           <p className="text-muted-foreground">Nenhuma campanha selecionada.</p>
-         </div>
-      ) : loading ? (
+      {loading ? (
         <div className="flex h-64 items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
+      ) : leads.length === 0 && !searchTerm ? (
+        <div className="flex h-64 flex-col items-center justify-center rounded-lg border border-dashed border-border bg-secondary/10">
+          <p className="text-muted-foreground mb-4">Nenhum lead encontrado para esta campanha.</p>
+          <Button variant="outline" size="sm" onClick={handleInjectMockData}>Injetar Dados de Teste</Button>
+        </div>
       ) : (
-        <KanbanBoard leads={filteredLeads} onLeadClick={handleLeadClick} onLeadMove={handleLeadMove} />
+        <KanbanBoard leads={filteredLeads} onLeadClick={(l) => { setSelectedLead(l); setIsSheetOpen(true); }} onLeadMove={handleLeadMove} />
       )}
 
       {selectedLead && (
@@ -276,82 +242,56 @@ export function Leads() {
           lead={selectedLead} 
           open={isSheetOpen} 
           onOpenChange={setIsSheetOpen}
-          onLeadUpdate={() => fetchLeads(false)} 
+          onLeadUpdate={() => workspaceId && fetchLeads(workspaceId, false)} 
           campaignId={selectedCampaignId} 
         />
       )}
 
-      {/* MODAL DE NOVO LEAD */}
+      {/* --- MODAL DE CADASTRO --- */}
       <AnimatePresence>
         {isCreateLeadOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-background/90 backdrop-blur-sm" onClick={() => setIsCreateLeadOpen(false)} />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-[#0F172A] p-6 shadow-2xl">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setIsCreateLeadOpen(false)} />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="relative w-full max-w-lg rounded-2xl border border-border bg-[#0F172A] p-6 shadow-2xl">
               <div className="mb-6 flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold text-foreground">Novo Lead</h2>
-                  <p className="text-sm text-muted-foreground">Adicione um novo lead e atribua a uma campanha.</p>
-                </div>
-                <Button variant="ghost" size="icon" onClick={() => setIsCreateLeadOpen(false)} className="h-8 w-8 rounded-full">
-                  <X className="h-4 w-4" />
-                </Button>
+                <h2 className="text-xl font-bold">Adicionar Lead</h2>
+                <Button variant="ghost" size="icon" onClick={() => setIsCreateLeadOpen(false)}><X className="h-4 w-4" /></Button>
               </div>
 
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Nome <span className="text-red-500">*</span></Label>
-                    <Input id="name" placeholder="Ex: João Silva" className="bg-secondary/20" value={newLead.name} onChange={(e) => setNewLead({ ...newLead, name: e.target.value })} />
+                  <div className="space-y-1">
+                    <Label>Nome Completo</Label>
+                    <Input placeholder="Nome" value={newLead.name} onChange={(e) => setNewLead({ ...newLead, name: e.target.value })} />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="company">Empresa <span className="text-red-500">*</span></Label>
-                    <Input id="company" placeholder="Ex: Tech Corp" className="bg-secondary/20" value={newLead.company} onChange={(e) => setNewLead({ ...newLead, company: e.target.value })} />
+                  <div className="space-y-1">
+                    <Label>Empresa</Label>
+                    <Input placeholder="Empresa" value={newLead.company} onChange={(e) => setNewLead({ ...newLead, company: e.target.value })} />
                   </div>
                 </div>
-
+                <div className="space-y-1">
+                  <Label>Cargo</Label>
+                  <Input placeholder="Ex: Diretor Comercial" value={newLead.role} onChange={(e) => setNewLead({ ...newLead, role: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label>E-mail</Label>
+                  <Input type="email" placeholder="email@empresa.com" value={newLead.email} onChange={(e) => setNewLead({ ...newLead, email: e.target.value })} />
+                </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="role">Cargo</Label>
-                    <Input id="role" placeholder="Ex: CTO" className="bg-secondary/20" value={newLead.role} onChange={(e) => setNewLead({ ...newLead, role: e.target.value })} />
+                  <div className="space-y-1">
+                    <Label>WhatsApp</Label>
+                    <Input placeholder="(11) 9..." value={newLead.phone} onChange={(e) => setNewLead({ ...newLead, phone: e.target.value })} />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email">E-mail</Label>
-                    <Input id="email" type="email" placeholder="joao@empresa.com" className="bg-secondary/20" value={newLead.email} onChange={(e) => setNewLead({ ...newLead, email: e.target.value })} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">Telefone</Label>
-                    <Input id="phone" placeholder="(11) 99999-9999" className="bg-secondary/20" value={newLead.phone} onChange={(e) => setNewLead({ ...newLead, phone: e.target.value })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="linkedin">LinkedIn URL</Label>
-                    <Input id="linkedin" placeholder="linkedin.com/in/joaosilva" className="bg-secondary/20" value={newLead.linkedin} onChange={(e) => setNewLead({ ...newLead, linkedin: e.target.value })} />
+                  <div className="space-y-1">
+                    <Label>LinkedIn</Label>
+                    <Input placeholder="URL do perfil" value={newLead.linkedin} onChange={(e) => setNewLead({ ...newLead, linkedin: e.target.value })} />
                   </div>
                 </div>
 
-                <div className="space-y-2 pt-2 border-t border-border/50">
-                  <Label htmlFor="campaign-assign">Atribuir à Campanha <span className="text-red-500">*</span></Label>
-                  <select
-                    id="campaign-assign"
-                    className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-secondary/30 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#00D4FF]"
-                    value={newLead.campaign_id}
-                    onChange={(e) => setNewLead({ ...newLead, campaign_id: e.target.value })}
-                  >
-                    <option value="" disabled>Selecione uma campanha...</option>
-                    {campaigns.map((c) => (
-                      <option key={c.id} value={c.id} className="bg-[#0F172A]">{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="flex gap-3 pt-4 mt-6 border-t border-border/50">
-                  <Button variant="ghost" className="flex-1" onClick={() => setIsCreateLeadOpen(false)} disabled={isSubmittingLead}>
-                    Cancelar
-                  </Button>
-                  <Button variant="gradient" className="flex-1" onClick={handleCreateLead} disabled={!newLead.name || !newLead.company || !newLead.campaign_id || isSubmittingLead}>
-                    {isSubmittingLead ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Salvar Lead'}
+                <div className="flex gap-3 pt-6">
+                  <Button variant="ghost" className="flex-1" onClick={() => setIsCreateLeadOpen(false)}>Cancelar</Button>
+                  <Button variant="gradient" className="flex-1" onClick={handleCreateLead} disabled={isSubmittingLead}>
+                    {isSubmittingLead ? <Loader2 className="animate-spin" /> : 'Salvar Lead'}
                   </Button>
                 </div>
               </div>

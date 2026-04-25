@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, Lock, Briefcase, Loader2, ArrowRight, CheckCircle2, AlertTriangle, Info } from 'lucide-react';
+import { useNavigate } from 'react-router-dom'; // Adicionado para redirecionamento
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,6 +10,7 @@ import { supabase } from '../lib/supabase';
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate(); // Hook para navegação
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -20,6 +22,14 @@ export default function Auth() {
     title: '',
     message: ''
   });
+
+  const handleCloseModal = () => {
+    setAlertModal({ ...alertModal, isOpen: false });
+    // Se for sucesso, após fechar o modal, mandamos para o Dashboard
+    if (alertModal.type === 'success') {
+      navigate('/dashboard');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,9 +64,13 @@ export default function Auth() {
         if (signUpError) throw signUpError;
 
         if (data.user) {
+          // Cria o Workspace atrelado ao novo usuário
           const { error: workspaceError } = await supabase
             .from('workspaces')
-            .insert([{ name: workspaceName, owner_id: data.user.id }]);
+            .insert([{ 
+              name: workspaceName, 
+              owner_id: data.user.id 
+            }]);
 
           if (workspaceError) throw workspaceError;
 
@@ -64,7 +78,7 @@ export default function Auth() {
             isOpen: true,
             type: 'success',
             title: 'Workspace Criado!',
-            message: 'Sua conta foi configurada com sucesso. Acesse seu e-mail para confirmar.'
+            message: 'Sua conta foi configurada com sucesso. Clique em entendido para acessar seu painel.'
           });
         }
       }
@@ -92,11 +106,9 @@ export default function Auth() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md bg-[#0F172A] border border-border/50 rounded-2xl p-8 shadow-2xl relative z-10"
       >
-        {/* Linha de Brilho no Topo */}
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#00D4FF] to-[#0066FF]" />
 
         <div className="flex flex-col items-center text-center mb-8">
-          {/* Logo Centralizada e de tamanho Médio */}
           <div className="mb-6 flex justify-center w-full">
             <img 
               src="/icone.png" 
@@ -213,7 +225,7 @@ export default function Auth() {
               <Button 
                 variant={alertModal.type === 'error' ? 'destructive' : 'gradient'} 
                 className="w-full font-bold h-10" 
-                onClick={() => setAlertModal({ ...alertModal, isOpen: false })}
+                onClick={handleCloseModal} // Chamando a função de fechar com redirecionamento
               >
                 Entendi
               </Button>
