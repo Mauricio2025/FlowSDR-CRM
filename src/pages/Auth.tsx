@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, Lock, Briefcase, Loader2, ArrowRight, CheckCircle2, AlertTriangle, Info } from 'lucide-react';
-import { useNavigate } from 'react-router-dom'; // Adicionado para redirecionamento
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,7 +10,7 @@ import { supabase } from '../lib/supabase';
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate(); // Hook para navegação
+  const navigate = useNavigate();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -23,11 +23,24 @@ export default function Auth() {
     message: ''
   });
 
+  // REDIRECIONAMENTO AUTOMÁTICO: Se já estiver logado, sai da tela de login
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        navigate('/dashboard');
+      }
+    };
+    checkUser();
+  }, [navigate]);
+
   const handleCloseModal = () => {
+    const isSuccess = alertModal.type === 'success';
     setAlertModal({ ...alertModal, isOpen: false });
-    // Se for sucesso, após fechar o modal, mandamos para o Dashboard
-    if (alertModal.type === 'success') {
-      navigate('/dashboard');
+    
+    if (isSuccess) {
+      // Pequeno timeout para garantir que o modal fechou visualmente antes da troca de rota
+      setTimeout(() => navigate('/dashboard'), 100);
     }
   };
 
@@ -37,18 +50,23 @@ export default function Auth() {
 
     try {
       if (isLogin) {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         
         if (signInError) throw signInError;
 
+        // Se o login foi um sucesso mas não há sessão, o e-mail provavelmente não foi confirmado
+        if (!data.session) {
+          throw new Error('Verifique seu e-mail para confirmar o cadastro antes de entrar.');
+        }
+
         setAlertModal({
           isOpen: true,
           type: 'success',
           title: 'Acesso Autorizado',
-          message: 'Bem-vindo de volta! Estamos preparando seu ambiente de vendas.'
+          message: 'Bem-vindo de volta! Redirecionando para seu dashboard...'
         });
 
       } else {
@@ -64,7 +82,6 @@ export default function Auth() {
         if (signUpError) throw signUpError;
 
         if (data.user) {
-          // Cria o Workspace atrelado ao novo usuário
           const { error: workspaceError } = await supabase
             .from('workspaces')
             .insert([{ 
@@ -78,7 +95,7 @@ export default function Auth() {
             isOpen: true,
             type: 'success',
             title: 'Workspace Criado!',
-            message: 'Sua conta foi configurada com sucesso. Clique em entendido para acessar seu painel.'
+            message: 'Sua conta foi configurada. Se o redirecionamento não ocorrer, verifique a confirmação no seu e-mail.'
           });
         }
       }
@@ -86,7 +103,7 @@ export default function Auth() {
       setAlertModal({
         isOpen: true,
         type: 'error',
-        title: 'Falha na Autenticação',
+        title: 'Ops! Algo deu errado',
         message: err.message || 'Verifique seus dados e tente novamente.'
       });
     } finally {
@@ -97,7 +114,6 @@ export default function Auth() {
   return (
     <div className="min-h-screen bg-[#0A0F1C] flex items-center justify-center p-4 font-sans relative overflow-hidden">
       
-      {/* Decoração de Fundo */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#0066FF]/10 rounded-full blur-[120px]" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#00D4FF]/10 rounded-full blur-[120px]" />
 
@@ -118,12 +134,12 @@ export default function Auth() {
           </div>
           
           <h2 className="text-2xl font-bold text-white mb-2">
-            {isLogin ? 'Bem-vindo ao FlowSDR' : 'Crie sua conta'}
+            {isLogin ? 'Entrar no FlowSDR' : 'Criar conta'}
           </h2>
           <p className="text-muted-foreground text-sm max-w-[280px]">
             {isLogin 
-              ? 'Insira suas credenciais para acessar seu workspace.' 
-              : 'Comece a prospectar com inteligência artificial hoje mesmo.'}
+              ? 'Acesse sua conta para gerenciar seus leads.' 
+              : 'Prepare-se para vender mais com IA.'}
           </p>
         </div>
 
@@ -146,7 +162,7 @@ export default function Auth() {
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="email" className="text-xs font-bold uppercase tracking-widest text-gray-500 ml-1">E-mail Profissional</Label>
+            <Label htmlFor="email" className="text-xs font-bold uppercase tracking-widest text-gray-500 ml-1">E-mail</Label>
             <div className="relative group">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 group-focus-within:text-[#00D4FF] transition-colors" />
               <Input
@@ -162,7 +178,7 @@ export default function Auth() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password" className="text-xs font-bold uppercase tracking-widest text-gray-500 ml-1">Sua Senha</Label>
+            <Label htmlFor="password" className="text-xs font-bold uppercase tracking-widest text-gray-500 ml-1">Senha</Label>
             <div className="relative group">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 group-focus-within:text-[#00D4FF] transition-colors" />
               <Input
@@ -187,7 +203,7 @@ export default function Auth() {
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
               <>
-                {isLogin ? 'Entrar no Sistema' : 'Configurar Workspace'}
+                {isLogin ? 'Entrar' : 'Registrar Empresa'}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </>
             )}
@@ -200,12 +216,11 @@ export default function Auth() {
             onClick={() => setIsLogin(!isLogin)}
             className="text-gray-400 hover:text-[#00D4FF] text-sm transition-colors font-medium"
           >
-            {isLogin ? 'Não tem uma conta? Registre sua empresa' : 'Já possui conta? Faça o Login'}
+            {isLogin ? 'Não tem uma conta? Registre-se' : 'Já possui conta? Faça o Login'}
           </button>
         </div>
       </motion.div>
 
-      {/* MODAL DE FEEDBACK MODERNO */}
       <AnimatePresence>
         {alertModal.isOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-sm bg-black/40">
@@ -225,7 +240,7 @@ export default function Auth() {
               <Button 
                 variant={alertModal.type === 'error' ? 'destructive' : 'gradient'} 
                 className="w-full font-bold h-10" 
-                onClick={handleCloseModal} // Chamando a função de fechar com redirecionamento
+                onClick={handleCloseModal}
               >
                 Entendi
               </Button>
